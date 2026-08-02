@@ -230,6 +230,7 @@ let letterBuf;
 let allAgents = [];
 let skeletonPixels = []; 
 let trailR, trailG, trailB; 
+let spawnTime = 0; // Tracks the last time agents were spawned
 
 // ── UI Setup & Event Listeners ────────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
@@ -423,7 +424,12 @@ function renderTrailToCanvas() {
 }
 
 function draw() {
-  for (const a of allAgents) a.update();
+  // Only update agent positions if 1 second (1000ms) has passed since spawning
+  if (millis() - spawnTime > 1000) {
+    for (const a of allAgents) a.update();
+  }
+  
+  // Trails will continue to deposit and pulse even while agents are stationary
   for (const a of allAgents) depositTrail(a.pos.x, a.pos.y);
   updateTrailBuffer();
   renderTrailToCanvas();
@@ -506,6 +512,9 @@ function spawnAgents() {
     const bp = skeletonPixels[Math.floor(Math.random() * skeletonPixels.length)];
     if(bp) allAgents.push(new Agent(bp.x + random(-1,1), bp.y + random(-1,1), random(TWO_PI)));
   }
+  
+  // Reset the spawn time whenever new agents are generated
+  spawnTime = millis();
   setStatus(`${allAgents.length.toLocaleString()} agents spawned`);
 }
 

@@ -115,8 +115,7 @@
       align-items: center; justify-content: center; cursor: pointer;
     }
     #img-clear:hover { background: #c00; }
-    #img-status { font-size: 0.72rem; margin-top: 5px; color: var(--accent); min-height: 14px; }
-
+    
     .radio-group { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;}
     .radio-group label {
       display: flex; align-items: center; gap: 4px;
@@ -124,7 +123,7 @@
     }
     input[type="radio"] { accent-color: var(--accent); cursor: pointer; }
 
-    /* GIF Button Styles */
+    /* Video Button Styles */
     .btn-primary {
       width: 100%;
       padding: 10px;
@@ -139,18 +138,11 @@
       cursor: pointer;
       transition: background 0.2s, opacity 0.2s;
     }
-    .btn-primary:hover {
-      background: #5cd0ab;
-    }
-    .btn-primary:active {
-      opacity: 0.8;
-    }
-    .btn-primary:disabled {
-      background: #555;
-      color: #aaa;
-      cursor: not-allowed;
-    }
-    #gif-status {
+    .btn-primary:hover { background: #5cd0ab; }
+    .btn-primary:active { opacity: 0.8; }
+    .btn-primary:disabled { background: #555; color: #aaa; cursor: not-allowed; }
+    
+    .status-text {
       font-size: 0.7rem; color: #888; text-align: center; margin-top: 6px; min-height: 14px;
     }
   </style>
@@ -192,7 +184,7 @@
         <img id="img-preview" alt="preview">
         <div id="img-clear" title="Remove">✕</div>
       </div>
-      <div id="img-status"></div>
+      <div id="img-status" class="status-text"></div>
     </div>
   </div>
 
@@ -234,8 +226,8 @@
   <hr class="div">
   
   <div class="control-group">
-    <button id="recordGifBtn" class="btn-primary">Record 10s GIF</button>
-    <div id="gif-status"></div>
+    <button id="recordVidBtn" class="btn-primary">Record 10s Transparent Video</button>
+    <div id="vid-status" class="status-text"></div>
   </div>
 </div>
 
@@ -263,6 +255,10 @@ let allAgents = [];
 let skeletonPixels = []; 
 let trailR, trailG, trailB; 
 let spawnTime = 0; 
+
+// Video Recording Variables
+let mediaRecorder;
+let recordedChunks = [];
 
 // ── UI Setup & Event Listeners ────────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
@@ -308,7 +304,7 @@ window.addEventListener("DOMContentLoaded", () => {
       uploadedImage = null;
       document.getElementById("img-preview-wrap").style.display = "none";
       document.getElementById("img-preview").src = "";
-      setStatus("");
+      document.getElementById("img-status").textContent = "";
       fileInput.value = "";
       if (seedMode === "image" && typeof spawnAgents === "function") spawnAgents();
     });
@@ -330,29 +326,55 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // NEW: GIF Recording Event Listener
-  const recordBtn = document.getElementById("recordGifBtn");
-  const gifStatus = document.getElementById("gif-status");
-  if (recordBtn) {
-    recordBtn.addEventListener("click", () => {
-      recordBtn.disabled = true;
-      recordBtn.innerText = "Recording...";
-      gifStatus.innerText = "Capturing 10s at 15fps (browser may freeze)...";
+  // UPDATED: Native Transparent WebM Video Recording
+  const recordVidBtn = document.getElementById("recordVidBtn");
+  const vidStatus = document.getElementById("vid-status");
+  
+  if (recordVidBtn) {
+    recordVidBtn.addEventListener("click", () => {
+      recordVidBtn.disabled = true;
+      recordVidBtn.innerText = "Recording...";
+      vidStatus.innerText = "Capturing smooth transparent video...";
       
-      // FIX: Temporarily drop the framerate to 15fps to prevent memory crash!
-      frameRate(15);
+      const canvasElement = document.querySelector('canvas');
+      const stream = canvasElement.captureStream(60); 
       
-      // Tell p5 to save a 10 second GIF.
-      saveGif('physarum-typography', 10, { units: 'seconds' });
+      // Request WebM with VP9 codec to ensure Alpha Transparency support
+      let options = { mimeType: 'video/webm; codecs=vp9' };
+      try {
+        mediaRecorder = new MediaRecorder(stream, options);
+      } catch (e) {
+        mediaRecorder = new MediaRecorder(stream); // Fallback if vp9 isn't explicitly requested
+      }
 
-      // Reset the UI and restore smooth framerate after 10s + encoding time
+      mediaRecorder.ondataavailable = function(e) {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = function() {
+        const blob = new Blob(recordedChunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        document.body.appendChild(a);
+        a.style = "display: none";
+        a.href = url;
+        a.download = "physarum-typography-transparent.webm";
+        a.click();
+        window.URL.revokeObjectURL(url);
+        recordedChunks = []; // Reset chunks for next recording
+        
+        recordVidBtn.disabled = false;
+        recordVidBtn.innerText = "Record 10s Transparent Video";
+        vidStatus.innerText = "Video Downloaded!";
+        setTimeout(() => vidStatus.innerText = "", 4000);
+      };
+
+      mediaRecorder.start();
+
+      // Stop recording automatically after 10 seconds
       setTimeout(() => {
-        frameRate(simSpeed); // Restore the original smooth speed!
-        recordBtn.disabled = false;
-        recordBtn.innerText = "Record 10s GIF";
-        gifStatus.innerText = "GIF Downloaded!";
-        setTimeout(() => gifStatus.innerText = "", 4000);
-      }, 15000); 
+        mediaRecorder.stop();
+      }, 10000); 
     });
   }
 });
@@ -362,27 +384,23 @@ function handleFile(file) {
   if (file instanceof FileList) file = file[0];
   if (!(file instanceof Blob)) return;
 
-  setStatus("Loading image...");
+  const imgStatus = document.getElementById("img-status");
+  imgStatus.textContent = "Loading image...";
   const img = new Image();
   img.src = URL.createObjectURL(file);
   img.onload = () => {
       uploadedImage = img;
       document.getElementById("img-preview").src = img.src;
       document.getElementById("img-preview-wrap").style.display = "block";
-      setStatus(`${img.naturalWidth}×${img.naturalHeight}px — loaded`);
+      imgStatus.textContent = `${img.naturalWidth}×${img.naturalHeight}px — loaded`;
       seedMode = "image";
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "image-tab"));
       document.querySelectorAll(".tab-pane").forEach(p => p.classList.toggle("active", p.id === "image-tab"));
       setTimeout(() => { if (typeof spawnAgents === "function") spawnAgents(); }, 50);
   };
-  img.onerror = () => setStatus("Image read error.", true);
-}
-
-function setStatus(msg, err = false) {
-  const imgStatus = document.getElementById("img-status");
-  if (imgStatus) {
-    imgStatus.style.color = err ? "#f66" : "var(--accent)";
-    imgStatus.textContent = msg;
+  img.onerror = () => {
+    imgStatus.textContent = "Image read error.";
+    imgStatus.style.color = "#f66";
   }
 }
 
@@ -562,7 +580,6 @@ function spawnAgents() {
   }
   
   spawnTime = millis();
-  setStatus(`${allAgents.length.toLocaleString()} agents spawned`);
 }
 
 class Agent {

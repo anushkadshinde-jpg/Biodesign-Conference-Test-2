@@ -21,7 +21,6 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       overflow: hidden;
-      /* Checkerboard pattern to easily verify transparency */
       background-color: #111;
       background-image: 
         linear-gradient(45deg, #1a1a1a 25%, transparent 25%, transparent 75%, #1a1a1a 75%, #1a1a1a),
@@ -31,7 +30,6 @@
       font-family: 'Bai Jamjuree Local', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       color: var(--text);
     }
-    /* Hidden element to force the browser to download the font immediately */
     #font-preload {
       position: absolute;
       opacity: 0;
@@ -91,7 +89,6 @@
 
     hr.div { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 14px 0; }
 
-    /* Drop zone */
     #drop-zone {
       width: 100%; min-height: 90px;
       border: 1.5px dashed rgba(255,255,255,0.2);
@@ -109,9 +106,7 @@
     #file-input { display: none; }
 
     #img-preview-wrap { display: none; position: relative; margin-top: 12px; }
-    
     #img-preview { width: 100%; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); display: block; background: rgba(255,255,255,0.05);}
-    
     #img-clear {
       position: absolute; top: 5px; right: 5px;
       width: 20px; height: 20px; border-radius: 50%;
@@ -181,25 +176,26 @@
 
   <hr class="div">
 
+  <!-- DEFAULT UI VALUES UPDATED FOR SMOOTHNESS -->
   <div class="control-group">
-    <label>Speed<span class="val" id="speedVal">30 fps</span></label>
-    <input type="range" id="speedSlider" min="5" max="60" step="1" value="30">
+    <label>Speed<span class="val" id="speedVal">60 fps</span></label>
+    <input type="range" id="speedSlider" min="5" max="60" step="1" value="60">
   </div>
   <div class="control-group">
     <label>Decay<span class="val" id="decayVal">0.96</span></label>
     <input type="range" id="decaySlider" min="0.80" max="0.99" step="0.01" value="0.96">
   </div>
   <div class="control-group">
-    <label>Diffusion<span class="val" id="diffVal">0.25</span></label>
-    <input type="range" id="diffSlider" min="0" max="1" step="0.05" value="0.25">
+    <label>Diffusion<span class="val" id="diffVal">0.60</span></label>
+    <input type="range" id="diffSlider" min="0" max="1" step="0.05" value="0.60">
   </div>
   <div class="control-group">
     <label>Sensor Angle<span class="val" id="saVal">45°</span></label>
     <input type="range" id="saSlider" min="10" max="90" step="1" value="45">
   </div>
   <div class="control-group">
-    <label>Rotation Angle<span class="val" id="raVal">30°</span></label>
-    <input type="range" id="raSlider" min="5" max="90" step="1" value="30">
+    <label>Rotation Angle<span class="val" id="raVal">20°</span></label>
+    <input type="range" id="raSlider" min="5" max="90" step="1" value="20">
   </div>
   <div class="control-group">
     <label>Step Size<span class="val" id="stepVal">1.5</span></label>
@@ -212,14 +208,15 @@
 // ── Params & Globals ──────────────────────────────────────────────────────────
 const AGENTS_PER_LETTER = 2000;
 const SENSOR_DIST       = 10;
-const TRAIL_R = 255, TRAIL_G = 255, TRAIL_B = 255;  // White Generative Growth
+const TRAIL_R = 255, TRAIL_G = 255, TRAIL_B = 255;  
 
 let textSeed        = "BIODESIGN";
-let simSpeed        = 30; // New parameter to control FPS independently of physics
+// UPDATED DEFAULT VARIABLES FOR SMOOTHER VISUALS
+let simSpeed        = 60; 
 let decayFactor     = 0.96;
-let diffusionFactor = 0.25;
+let diffusionFactor = 0.60; 
 let sensorAngle     = Math.PI / 4;
-let rotationAngle   = Math.PI / 6;
+let rotationAngle   = 20 * Math.PI / 180; 
 let stepSize        = 1.5;
 
 let seedMode      = "text";   
@@ -230,11 +227,10 @@ let letterBuf;
 let allAgents = [];
 let skeletonPixels = []; 
 let trailR, trailG, trailB; 
-let spawnTime = 0; // Tracks the last time agents were spawned
+let spawnTime = 0; 
 
 // ── UI Setup & Event Listeners ────────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
-  // Tab switching
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
@@ -333,11 +329,10 @@ function setStatus(msg, err = false) {
 function setup() {
   createCanvas(windowWidth, windowHeight);
   pixelDensity(1);
-  frameRate(simSpeed); // Set initial execution speed
+  frameRate(simSpeed); 
   initTrailBuffer();
   letterBuf = createGraphics(width, height);
   
-  // Font loading API execution check
   if (document.fonts) {
     document.fonts.load('120px "Bai Jamjuree Local"').then(() => {
       spawnAgents();
@@ -392,31 +387,27 @@ function renderTrailToCanvas() {
   loadPixels();
   const n = width * height;
   
-  // Clear the base layer (Set Alpha to 0 for full transparency)
   for (let i = 0; i < n; i++) {
     const pi = i * 4;
     pixels[pi] = 0; pixels[pi+1] = 0; pixels[pi+2] = 0; pixels[pi+3] = 0; 
   }
   
-  // Draw the permanent skeleton pixels FIRST (underneath)
   for (const p of skeletonPixels) {
     const pi = (p.x + p.y * width) * 4;
-    // Brighter color values to increase perceived solidness/opacity
+    // Base skeleton text color set to #48b493
     pixels[pi] = 72; pixels[pi+1] = 180; pixels[pi+2] = 147; 
-    pixels[pi+3] = 255; // Keep skeleton fully opaque
+    pixels[pi+3] = 255; 
   }
   
-  // Render the glowing trails ON TOP of the skeleton base
   for (let i = 0; i < n; i++) {
     const pi = i * 4;
-    // Calculate the brightest color channel to use as the alpha/opacity
     const intensity = Math.max(trailR[i], trailG[i], trailB[i]);
     
     if (intensity > 5) {
       pixels[pi]   = Math.max(pixels[pi], Math.min(trailR[i], 255));
       pixels[pi+1] = Math.max(pixels[pi+1], Math.min(trailG[i], 255));
       pixels[pi+2] = Math.max(pixels[pi+2], Math.min(trailB[i], 255));
-      // Multiplied the intensity by 2.5 to make the glowing trails much more opaque
+      // Opacity multiplier ensures the white trails are thick and solid
       pixels[pi+3] = Math.max(pixels[pi+3], Math.min(intensity * 2.5, 255)); 
     }
   }
@@ -424,12 +415,11 @@ function renderTrailToCanvas() {
 }
 
 function draw() {
-  // Only update agent positions if 1 second (1000ms) has passed since spawning
+  // 1-second delay logic
   if (millis() - spawnTime > 1000) {
     for (const a of allAgents) a.update();
   }
   
-  // Trails will continue to deposit and pulse even while agents are stationary
   for (const a of allAgents) depositTrail(a.pos.x, a.pos.y);
   updateTrailBuffer();
   renderTrailToCanvas();
@@ -513,24 +503,33 @@ function spawnAgents() {
     if(bp) allAgents.push(new Agent(bp.x + random(-1,1), bp.y + random(-1,1), random(TWO_PI)));
   }
   
-  // Reset the spawn time whenever new agents are generated
   spawnTime = millis();
   setStatus(`${allAgents.length.toLocaleString()} agents spawned`);
 }
 
 class Agent {
   constructor(x, y, angle) {
-    this.pos   = createVector(x, y);
-    this.angle = angle;
+    this.pos          = createVector(x, y);
+    this.angle        = angle;
+    // SMOOTHING UPDATE: Introduce turn velocity/momentum
+    this.turnVelocity = 0; 
   }
   update() {
     const sL = this._sense(this.angle - sensorAngle);
     const sC = this._sense(this.angle);
     const sR = this._sense(this.angle + sensorAngle);
 
-    if      (sL > sC && sL > sR) this.angle -= rotationAngle;
-    else if (sR > sC && sR > sL) this.angle += rotationAngle;
-    else                         this.angle += random(-0.1, 0.1);
+    let targetTurn = 0;
+
+    // SMOOTHING UPDATE: Determine target turn instead of instantly snapping
+    if      (sL > sC && sL > sR) targetTurn = -rotationAngle;
+    else if (sR > sC && sR > sL) targetTurn = rotationAngle;
+    else                         targetTurn = random(-0.05, 0.05);
+
+    // SMOOTHING UPDATE: Curve smoothly toward the target (lerp)
+    // 0.2 represents the curve smoothness. Lower = wider/softer curves.
+    this.turnVelocity = lerp(this.turnVelocity, targetTurn, 0.2);
+    this.angle += this.turnVelocity;
 
     this.pos.x = (this.pos.x + Math.cos(this.angle) * stepSize + width)  % width;
     this.pos.y = (this.pos.y + Math.sin(this.angle) * stepSize + height) % height;

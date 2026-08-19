@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Physarum Decay Machine</title>
+
   <style>
     @font-face {
       font-family: 'Bai Jamjuree Local';
@@ -13,7 +14,7 @@
     }
 
     :root {
-      --bg: transparent;
+      --bg: #00FF00; /* Updated to Chroma Green for the UI background */
       --panel-bg: rgba(15, 15, 15, 0.88);
       --text: rgba(255, 255, 255, 0.75); 
       --accent: #48b493; 
@@ -21,12 +22,7 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       overflow: hidden;
-      background-color: #111;
-      background-image: 
-        linear-gradient(45deg, #1a1a1a 25%, transparent 25%, transparent 75%, #1a1a1a 75%, #1a1a1a),
-        linear-gradient(45deg, #1a1a1a 25%, transparent 25%, transparent 75%, #1a1a1a 75%, #1a1a1a);
-      background-size: 20px 20px;
-      background-position: 0 0, 10px 10px;
+      background-color: var(--bg);
       font-family: 'Bai Jamjuree Local', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       color: var(--text);
     }
@@ -123,7 +119,7 @@
     }
     input[type="radio"] { accent-color: var(--accent); cursor: pointer; }
 
-    /* Video Button Styles */
+    /* Button Styles */
     .btn-primary {
       width: 100%;
       padding: 10px;
@@ -226,7 +222,7 @@
   <hr class="div">
   
   <div class="control-group">
-    <button id="recordVidBtn" class="btn-primary">Record 10s Transparent Video</button>
+    <button id="recordGreenBtn" class="btn-primary">Record 10s Green Screen (.mp4)</button>
     <div id="vid-status" class="status-text"></div>
   </div>
 </div>
@@ -255,10 +251,6 @@ let allAgents = [];
 let skeletonPixels = []; 
 let trailR, trailG, trailB; 
 let spawnTime = 0; 
-
-// Video Recording Variables
-let mediaRecorder;
-let recordedChunks = [];
 
 // ── UI Setup & Event Listeners ────────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
@@ -326,46 +318,49 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // UPDATED: Native Transparent WebM Video Recording
-  const recordVidBtn = document.getElementById("recordVidBtn");
+  // GREEN SCREEN VIDEO RECORDER BLOCK
+  const recordGreenBtn = document.getElementById("recordGreenBtn");
   const vidStatus = document.getElementById("vid-status");
+  let mediaRecorder;
+  let recordedChunks = [];
   
-  if (recordVidBtn) {
-    recordVidBtn.addEventListener("click", () => {
-      recordVidBtn.disabled = true;
-      recordVidBtn.innerText = "Recording...";
-      vidStatus.innerText = "Capturing smooth transparent video...";
+  if (recordGreenBtn) {
+    recordGreenBtn.addEventListener("click", () => {
+      recordGreenBtn.disabled = true;
+      recordGreenBtn.innerText = "Recording...";
+      vidStatus.innerText = "Capturing 10s Green Screen Video...";
       
       const canvasElement = document.querySelector('canvas');
       const stream = canvasElement.captureStream(60); 
       
-      // Request WebM with VP9 codec to ensure Alpha Transparency support
-      let options = { mimeType: 'video/webm; codecs=vp9' };
-      try {
-        mediaRecorder = new MediaRecorder(stream, options);
-      } catch (e) {
-        mediaRecorder = new MediaRecorder(stream); // Fallback if vp9 isn't explicitly requested
+      // Request MP4 if supported, otherwise safely fallback to WebM
+      let options = { mimeType: 'video/webm' };
+      if (MediaRecorder.isTypeSupported('video/mp4')) {
+        options = { mimeType: 'video/mp4' };
       }
+
+      mediaRecorder = new MediaRecorder(stream, options);
 
       mediaRecorder.ondataavailable = function(e) {
         if (e.data.size > 0) recordedChunks.push(e.data);
       };
 
       mediaRecorder.onstop = function() {
-        const blob = new Blob(recordedChunks, { type: "video/webm" });
+        const extension = options.mimeType.includes('mp4') ? 'mp4' : 'webm';
+        const blob = new Blob(recordedChunks, { type: options.mimeType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         document.body.appendChild(a);
         a.style = "display: none";
         a.href = url;
-        a.download = "physarum-typography-transparent.webm";
+        a.download = `physarum-greenscreen.${extension}`;
         a.click();
         window.URL.revokeObjectURL(url);
-        recordedChunks = []; // Reset chunks for next recording
+        recordedChunks = []; 
         
-        recordVidBtn.disabled = false;
-        recordVidBtn.innerText = "Record 10s Transparent Video";
-        vidStatus.innerText = "Video Downloaded!";
+        recordGreenBtn.disabled = false;
+        recordGreenBtn.innerText = "Record 10s Green Screen (.mp4)";
+        vidStatus.innerText = "Video Downloaded successfully!";
         setTimeout(() => vidStatus.innerText = "", 4000);
       };
 
@@ -466,17 +461,23 @@ function renderTrailToCanvas() {
   loadPixels();
   const n = width * height;
   
+  // Clear the base layer to Pure Chroma Green (#00FF00)
   for (let i = 0; i < n; i++) {
     const pi = i * 4;
-    pixels[pi] = 0; pixels[pi+1] = 0; pixels[pi+2] = 0; pixels[pi+3] = 0; 
+    pixels[pi] = 0;     // Red
+    pixels[pi+1] = 255; // Green
+    pixels[pi+2] = 0;   // Blue
+    pixels[pi+3] = 255; // Alpha (Solid)
   }
   
+  // Draw the permanent skeleton pixels FIRST (underneath)
   for (const p of skeletonPixels) {
     const pi = (p.x + p.y * width) * 4;
     pixels[pi] = 72; pixels[pi+1] = 180; pixels[pi+2] = 147; 
     pixels[pi+3] = 255; 
   }
   
+  // Render the glowing trails ON TOP of the skeleton base
   for (let i = 0; i < n; i++) {
     const pi = i * 4;
     const intensity = Math.max(trailR[i], trailG[i], trailB[i]);
@@ -485,7 +486,8 @@ function renderTrailToCanvas() {
       pixels[pi]   = Math.max(pixels[pi], Math.min(trailR[i], 255));
       pixels[pi+1] = Math.max(pixels[pi+1], Math.min(trailG[i], 255));
       pixels[pi+2] = Math.max(pixels[pi+2], Math.min(trailB[i], 255));
-      pixels[pi+3] = Math.max(pixels[pi+3], Math.min(intensity * 2.5, 255)); 
+      // Keep alpha solid since this is a green screen video file
+      pixels[pi+3] = 255; 
     }
   }
   updatePixels();

@@ -330,25 +330,29 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // NEW: GIF Recording Event Listener
   const recordBtn = document.getElementById("recordGifBtn");
   const gifStatus = document.getElementById("gif-status");
   if (recordBtn) {
     recordBtn.addEventListener("click", () => {
       recordBtn.disabled = true;
       recordBtn.innerText = "Recording...";
-      gifStatus.innerText = "Capturing frames (browser may freeze momentarily)...";
+      gifStatus.innerText = "Capturing 10s at 15fps (browser may freeze)...";
+      
+      // FIX: Temporarily drop the framerate to 15fps to prevent memory crash!
+      frameRate(15);
       
       // Tell p5 to save a 10 second GIF.
       saveGif('physarum-typography', 10, { units: 'seconds' });
 
-      // Reset the UI after 10 seconds + a few extra seconds for the browser to encode
-      // 13500 milliseconds = 13.5 seconds
+      // Reset the UI and restore smooth framerate after 10s + encoding time
       setTimeout(() => {
+        frameRate(simSpeed); // Restore the original smooth speed!
         recordBtn.disabled = false;
         recordBtn.innerText = "Record 10s GIF";
         gifStatus.innerText = "GIF Downloaded!";
         setTimeout(() => gifStatus.innerText = "", 4000);
-      }, 13500); 
+      }, 15000); 
     });
   }
 });

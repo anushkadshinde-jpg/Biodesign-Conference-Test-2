@@ -14,7 +14,7 @@
     }
 
     :root {
-      --bg: #00FF00; /* Updated to Chroma Green for the UI background */
+      --bg: #00FF00; 
       --panel-bg: rgba(15, 15, 15, 0.88);
       --text: rgba(255, 255, 255, 0.75); 
       --accent: #48b493; 
@@ -80,6 +80,20 @@
       font-family: inherit; outline: none; transition: border-color 0.2s;
     }
     input[type="text"]:focus { border-color: var(--accent); }
+    
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 42px;
+      height: 38px;
+      border-radius: 6px;
+      cursor: pointer;
+      background: transparent;
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch { border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; }
+
     input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
     span.val { font-family: monospace; color: var(--accent); }
 
@@ -184,6 +198,15 @@
     </div>
   </div>
 
+  <!-- NEW: Background Color Picker -->
+  <div class="control-group">
+    <label class="block-label">Background Color</label>
+    <div style="display: flex; gap: 8px;">
+      <input type="color" id="bgColorPicker" value="#00FF00" title="Pick a color">
+      <input type="text" id="bgHexInput" value="#00FF00" style="flex: 1; font-family: monospace;" maxlength="7">
+    </div>
+  </div>
+
   <div class="control-group">
     <label class="block-label">Spawn agents on</label>
     <div class="radio-group">
@@ -222,7 +245,7 @@
   <hr class="div">
   
   <div class="control-group">
-    <button id="recordGreenBtn" class="btn-primary">Record 10s Green Screen (.mp4)</button>
+    <button id="recordVidBtn" class="btn-primary">Record 10s Video (.mp4)</button>
     <div id="vid-status" class="status-text"></div>
   </div>
 </div>
@@ -246,14 +269,37 @@ let seedMode      = "text";
 let uploadedImage = null;     
 let edgeMode      = "fill";   
 
+// Background Color Defaults (Starts at #00FF00)
+let bgR = 0, bgG = 255, bgB = 0;
+
 let letterBuf;      
 let allAgents = [];
 let skeletonPixels = []; 
 let trailR, trailG, trailB; 
 let spawnTime = 0; 
 
+// Video Recording Variables
+let mediaRecorder;
+let recordedChunks = [];
+
+// ── Helper: Hex to RGB ────────────────────────────────────────────────────────
+function hexToRgb(hex) {
+  let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : null;
+}
+
+function rgbToHex(r, g, b) {
+  return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1).toUpperCase();
+}
+
 // ── UI Setup & Event Listeners ────────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
+  
+  // Tab Switching
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
@@ -266,6 +312,38 @@ window.addEventListener("DOMContentLoaded", () => {
       seedMode = btn.dataset.tab === "image-tab" ? "image" : "text";
       if (typeof spawnAgents === "function") spawnAgents();
     });
+  });
+
+  // Background Color Listeners
+  const colorPicker = document.getElementById("bgColorPicker");
+  const hexInput = document.getElementById("bgHexInput");
+
+  function updateBackground(hexVal) {
+    const rgb = hexToRgb(hexVal);
+    if (rgb) {
+      bgR = rgb.r;
+      bgG = rgb.g;
+      bgB = rgb.b;
+      colorPicker.value = hexVal;
+      hexInput.value = hexVal.toUpperCase();
+      document.documentElement.style.setProperty('--bg', hexVal);
+    }
+  }
+
+  colorPicker.addEventListener("input", (e) => {
+    updateBackground(e.target.value);
+  });
+
+  hexInput.addEventListener("change", (e) => {
+    let val = e.target.value.trim();
+    if (!val.startsWith('#')) val = '#' + val;
+    // Validate hex format before updating
+    if (/^#[0-9A-F]{6}$/i.test(val)) {
+      updateBackground(val);
+    } else {
+      // Revert to current valid color if invalid input
+      hexInput.value = rgbToHex(bgR, bgG, bgB);
+    }
   });
 
   document.querySelectorAll('input[name="edge-mode"]').forEach(r => {
@@ -318,22 +396,19 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // GREEN SCREEN VIDEO RECORDER BLOCK
-  const recordGreenBtn = document.getElementById("recordGreenBtn");
+  // Video Recording Configuration
+  const recordVidBtn = document.getElementById("recordVidBtn");
   const vidStatus = document.getElementById("vid-status");
-  let mediaRecorder;
-  let recordedChunks = [];
   
-  if (recordGreenBtn) {
-    recordGreenBtn.addEventListener("click", () => {
-      recordGreenBtn.disabled = true;
-      recordGreenBtn.innerText = "Recording...";
-      vidStatus.innerText = "Capturing 10s Green Screen Video...";
+  if (recordVidBtn) {
+    recordVidBtn.addEventListener("click", () => {
+      recordVidBtn.disabled = true;
+      recordVidBtn.innerText = "Recording...";
+      vidStatus.innerText = "Capturing 10s Video...";
       
       const canvasElement = document.querySelector('canvas');
       const stream = canvasElement.captureStream(60); 
       
-      // Request MP4 if supported, otherwise safely fallback to WebM
       let options = { mimeType: 'video/webm' };
       if (MediaRecorder.isTypeSupported('video/mp4')) {
         options = { mimeType: 'video/mp4' };
@@ -353,20 +428,19 @@ window.addEventListener("DOMContentLoaded", () => {
         document.body.appendChild(a);
         a.style = "display: none";
         a.href = url;
-        a.download = `physarum-greenscreen.${extension}`;
+        a.download = `physarum-video.${extension}`;
         a.click();
         window.URL.revokeObjectURL(url);
         recordedChunks = []; 
         
-        recordGreenBtn.disabled = false;
-        recordGreenBtn.innerText = "Record 10s Green Screen (.mp4)";
+        recordVidBtn.disabled = false;
+        recordVidBtn.innerText = "Record 10s Video (.mp4)";
         vidStatus.innerText = "Video Downloaded successfully!";
         setTimeout(() => vidStatus.innerText = "", 4000);
       };
 
       mediaRecorder.start();
 
-      // Stop recording automatically after 10 seconds
       setTimeout(() => {
         mediaRecorder.stop();
       }, 10000); 
@@ -461,13 +535,13 @@ function renderTrailToCanvas() {
   loadPixels();
   const n = width * height;
   
-  // Clear the base layer to Pure Chroma Green (#00FF00)
+  // Clear the base layer dynamically based on the chosen Background Color
   for (let i = 0; i < n; i++) {
     const pi = i * 4;
-    pixels[pi] = 0;     // Red
-    pixels[pi+1] = 255; // Green
-    pixels[pi+2] = 0;   // Blue
-    pixels[pi+3] = 255; // Alpha (Solid)
+    pixels[pi] = bgR;     
+    pixels[pi+1] = bgG; 
+    pixels[pi+2] = bgB;   
+    pixels[pi+3] = 255; 
   }
   
   // Draw the permanent skeleton pixels FIRST (underneath)
@@ -486,7 +560,6 @@ function renderTrailToCanvas() {
       pixels[pi]   = Math.max(pixels[pi], Math.min(trailR[i], 255));
       pixels[pi+1] = Math.max(pixels[pi+1], Math.min(trailG[i], 255));
       pixels[pi+2] = Math.max(pixels[pi+2], Math.min(trailB[i], 255));
-      // Keep alpha solid since this is a green screen video file
       pixels[pi+3] = 255; 
     }
   }

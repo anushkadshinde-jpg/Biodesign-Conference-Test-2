@@ -232,6 +232,14 @@
     </div>
   </div>
 
+  <!-- NEW: Background Image Upload Control -->
+  <div class="control-group">
+    <label class="block-label">Background Image</label>
+    <button id="bg-upload-btn" class="btn-primary" style="margin-top: 0; background: rgba(255,255,255,0.1); color: #fff;">Upload Image</button>
+    <input type="file" id="bg-file-input" accept="image/*" style="display: none;">
+    <button id="bg-clear-btn" class="btn-primary" style="margin-top: 5px; display: none; background: #c00; color: white;">Remove Image</button>
+  </div>
+
   <div class="control-group">
     <label class="block-label">Spawn agents on</label>
     <div class="radio-group">
@@ -298,7 +306,10 @@ let seedMode      = "text";
 let uploadedImage = null;     
 let edgeMode      = "fill";   
 
+// Background Variables
 let bgR = 0, bgG = 255, bgB = 0;
+let rawBgImage = null;    // Original uploaded image file
+let bgImageData = null;   // Processed pixel array matching the canvas size
 
 let letterBuf;      
 let allAgents = [];
@@ -318,6 +329,41 @@ function hexToRgb(hex) {
 
 function rgbToHex(r, g, b) {
   return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1).toUpperCase();
+}
+
+// ── Image Processing Logic for Custom Backgrounds ──────────────────────────────
+function handleBgFile(file) {
+  if (!file) return;
+  if (file instanceof FileList) file = file[0];
+  if (!(file instanceof Blob)) return;
+
+  const img = new Image();
+  img.src = URL.createObjectURL(file);
+  img.onload = () => {
+      rawBgImage = img;
+      processBgImage();
+      document.getElementById('bg-clear-btn').style.display = 'block';
+      document.getElementById('bg-upload-btn').innerText = 'Change Image';
+  };
+}
+
+// Maps the uploaded image perfectly onto the canvas dimensions
+function processBgImage() {
+  if (!rawBgImage) return;
+  const offC = document.createElement("canvas");
+  offC.width = width; 
+  offC.height = height;
+  const ctx = offC.getContext("2d");
+  
+  // Scale the image to cover the canvas proportionally
+  const scale = Math.max(width / rawBgImage.naturalWidth, height / rawBgImage.naturalHeight);
+  const dw = rawBgImage.naturalWidth * scale;
+  const dh = rawBgImage.naturalHeight * scale;
+  const dx = (width - dw) / 2;
+  const dy = (height - dh) / 2;
+  
+  ctx.drawImage(rawBgImage, dx, dy, dw, dh);
+  bgImageData = ctx.getImageData(0, 0, width, height).data;
 }
 
 // ── UI Setup & Event Listeners ────────────────────────────────────────────────
@@ -365,6 +411,28 @@ window.addEventListener("DOMContentLoaded", () => {
       hexInput.value = rgbToHex(bgR, bgG, bgB);
     }
   });
+
+  // Background Image Triggers
+  const bgUploadBtn = document.getElementById("bg-upload-btn");
+  const bgFileInput = document.getElementById("bg-file-input");
+  const bgClearBtn = document.getElementById("bg-clear-btn");
+
+  if (bgUploadBtn && bgFileInput) {
+    bgUploadBtn.addEventListener("click", () => bgFileInput.click());
+    bgFileInput.addEventListener("change", e => {
+      if (e.target.files?.length > 0) handleBgFile(e.target.files[0]);
+    });
+  }
+
+  if (bgClearBtn) {
+    bgClearBtn.addEventListener("click", () => {
+      rawBgImage = null;
+      bgImageData = null;
+      bgClearBtn.style.display = "none";
+      bgUploadBtn.innerText = "Upload Image";
+      bgFileInput.value = "";
+    });
+  }
 
   document.querySelectorAll('input[name="edge-mode"]').forEach(r => {
     r.addEventListener("change", e => { edgeMode = e.target.value; spawnAgents(); });
@@ -429,15 +497,11 @@ window.addEventListener("DOMContentLoaded", () => {
       recordBtn.innerText = "Recording...";
       gifStatus.innerText = "Capturing 10s at 15fps (browser may freeze)...";
       
-      // Temporarily drop the framerate to 15fps to prevent memory crash
       frameRate(15);
-      
-      // Tell p5 to save a 10 second GIF
       saveGif('physarum-typography', 10, { units: 'seconds' });
 
-      // Reset the UI and restore smooth framerate after 10s + encoding time
       setTimeout(() => {
-        frameRate(simSpeed); // Restore the original smooth speed!
+        frameRate(simSpeed); 
         recordBtn.disabled = false;
         recordBtn.innerText = "Record 10s GIF";
         gifStatus.innerText = "GIF Downloaded!";
@@ -534,23 +598,29 @@ function renderTrailToCanvas() {
   loadPixels();
   const n = width * height;
   
-  // Clear the base layer dynamically based on the chosen Background Color
   for (let i = 0; i < n; i++) {
     const pi = i * 4;
-    pixels[pi] = bgR;     
-    pixels[pi+1] = bgG; 
-    pixels[pi+2] = bgB;   
-    pixels[pi+3] = 255; 
+    
+    // UPDATED: Check if a background image exists. If yes, paint it. Otherwise paint solid color.
+    if (bgImageData && bgImageData.length > pi) {
+      pixels[pi]   = bgImageData[pi];     
+      pixels[pi+1] = bgImageData[pi+1]; 
+      pixels[pi+2] = bgImageData[pi+2];   
+      pixels[pi+3] = 255; 
+    } else {
+      pixels[pi]   = bgR;     
+      pixels[pi+1] = bgG; 
+      pixels[pi+2] = bgB;   
+      pixels[pi+3] = 255; 
+    }
   }
   
-  // Draw the permanent skeleton pixels FIRST (underneath)
   for (const p of skeletonPixels) {
     const pi = (p.x + p.y * width) * 4;
     pixels[pi] = 72; pixels[pi+1] = 180; pixels[pi+2] = 147; 
     pixels[pi+3] = 255; 
   }
   
-  // Render the glowing trails ON TOP of the skeleton base
   for (let i = 0; i < n; i++) {
     const pi = i * 4;
     const intensity = Math.max(trailR[i], trailG[i], trailB[i]);
@@ -580,6 +650,7 @@ function windowResized() {
   initTrailBuffer();
   if (letterBuf) letterBuf.remove();
   letterBuf = createGraphics(width, height);
+  if (rawBgImage) processBgImage(); // Recalculate background image scaling
   spawnAgents();
 }
 

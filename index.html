@@ -72,7 +72,6 @@
     }
     label.block-label { display: block; margin-bottom: 6px; }
     
-    /* UPDATED: Added textarea styling for multiple lines */
     textarea {
       width: 100%;
       background: rgba(255,255,255,0.05);
@@ -187,11 +186,9 @@
   <div class="tab-pane active" id="text-tab">
     <div class="control-group">
       <label class="block-label" for="textInput">Seed Text</label>
-      <!-- UPDATED: Replaced input with textarea for multiple lines -->
       <textarea id="textInput">BIODESIGN</textarea>
     </div>
     
-    <!-- NEW: Text Position and Size Controls -->
     <div class="control-group">
       <label>Size<span class="val" id="textSizeVal">120</span></label>
       <input type="range" id="textSizeSlider" min="20" max="400" step="1" value="120">
@@ -273,8 +270,8 @@
   <hr class="div">
   
   <div class="control-group">
-    <button id="recordVidBtn" class="btn-primary">Record 10s Video (.mp4)</button>
-    <div id="vid-status" class="status-text"></div>
+    <button id="recordGifBtn" class="btn-primary">Record 10s GIF</button>
+    <div id="gif-status" class="status-text"></div>
   </div>
 </div>
 
@@ -286,10 +283,9 @@ const SENSOR_DIST       = 10;
 const TRAIL_R = 255, TRAIL_G = 255, TRAIL_B = 255;  
 
 let textSeed        = "BIODESIGN";
-// NEW: Variables for typography controls
 let textSizeVal     = 120;
-let textPosX        = 0.5; // Represents 50% width
-let textPosY        = 0.5; // Represents 50% height
+let textPosX        = 0.5; 
+let textPosY        = 0.5; 
 
 let simSpeed        = 60; 
 let decayFactor     = 0.96;
@@ -309,10 +305,6 @@ let allAgents = [];
 let skeletonPixels = []; 
 let trailR, trailG, trailB; 
 let spawnTime = 0; 
-
-// Video Recording Variables
-let mediaRecorder;
-let recordedChunks = [];
 
 // ── Helper: Hex to RGB ────────────────────────────────────────────────────────
 function hexToRgb(hex) {
@@ -385,7 +377,6 @@ window.addEventListener("DOMContentLoaded", () => {
     if (s && v) s.addEventListener("input", e => { v.innerText = e.target.value + suffix; setter(+e.target.value); });
   }
   
-  // Bind Text controls
   bindSlider("textSizeSlider", "textSizeVal", x => { textSizeVal = x; spawnAgents(); });
   bindSlider("textXSlider", "textXVal", x => { textPosX = x / 100; spawnAgents(); }, "%");
   bindSlider("textYSlider", "textYVal", x => { textPosY = x / 100; spawnAgents(); }, "%");
@@ -429,53 +420,29 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  const recordVidBtn = document.getElementById("recordVidBtn");
-  const vidStatus = document.getElementById("vid-status");
-  
-  if (recordVidBtn) {
-    recordVidBtn.addEventListener("click", () => {
-      recordVidBtn.disabled = true;
-      recordVidBtn.innerText = "Recording...";
-      vidStatus.innerText = "Capturing 10s Video...";
+  // GIF Recording Configuration
+  const recordBtn = document.getElementById("recordGifBtn");
+  const gifStatus = document.getElementById("gif-status");
+  if (recordBtn) {
+    recordBtn.addEventListener("click", () => {
+      recordBtn.disabled = true;
+      recordBtn.innerText = "Recording...";
+      gifStatus.innerText = "Capturing 10s at 15fps (browser may freeze)...";
       
-      const canvasElement = document.querySelector('canvas');
-      const stream = canvasElement.captureStream(60); 
+      // Temporarily drop the framerate to 15fps to prevent memory crash
+      frameRate(15);
       
-      let options = { mimeType: 'video/webm' };
-      if (MediaRecorder.isTypeSupported('video/mp4')) {
-        options = { mimeType: 'video/mp4' };
-      }
+      // Tell p5 to save a 10 second GIF
+      saveGif('physarum-typography', 10, { units: 'seconds' });
 
-      mediaRecorder = new MediaRecorder(stream, options);
-
-      mediaRecorder.ondataavailable = function(e) {
-        if (e.data.size > 0) recordedChunks.push(e.data);
-      };
-
-      mediaRecorder.onstop = function() {
-        const extension = options.mimeType.includes('mp4') ? 'mp4' : 'webm';
-        const blob = new Blob(recordedChunks, { type: options.mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        document.body.appendChild(a);
-        a.style = "display: none";
-        a.href = url;
-        a.download = `physarum-video.${extension}`;
-        a.click();
-        window.URL.revokeObjectURL(url);
-        recordedChunks = []; 
-        
-        recordVidBtn.disabled = false;
-        recordVidBtn.innerText = "Record 10s Video (.mp4)";
-        vidStatus.innerText = "Video Downloaded successfully!";
-        setTimeout(() => vidStatus.innerText = "", 4000);
-      };
-
-      mediaRecorder.start();
-
+      // Reset the UI and restore smooth framerate after 10s + encoding time
       setTimeout(() => {
-        mediaRecorder.stop();
-      }, 10000); 
+        frameRate(simSpeed); // Restore the original smooth speed!
+        recordBtn.disabled = false;
+        recordBtn.innerText = "Record 10s GIF";
+        gifStatus.innerText = "GIF Downloaded!";
+        setTimeout(() => gifStatus.innerText = "", 4000);
+      }, 15000); 
     });
   }
 });
@@ -567,6 +534,7 @@ function renderTrailToCanvas() {
   loadPixels();
   const n = width * height;
   
+  // Clear the base layer dynamically based on the chosen Background Color
   for (let i = 0; i < n; i++) {
     const pi = i * 4;
     pixels[pi] = bgR;     
@@ -575,12 +543,14 @@ function renderTrailToCanvas() {
     pixels[pi+3] = 255; 
   }
   
+  // Draw the permanent skeleton pixels FIRST (underneath)
   for (const p of skeletonPixels) {
     const pi = (p.x + p.y * width) * 4;
     pixels[pi] = 72; pixels[pi+1] = 180; pixels[pi+2] = 147; 
     pixels[pi+3] = 255; 
   }
   
+  // Render the glowing trails ON TOP of the skeleton base
   for (let i = 0; i < n; i++) {
     const pi = i * 4;
     const intensity = Math.max(trailR[i], trailG[i], trailB[i]);
@@ -623,19 +593,14 @@ function spawnAgents() {
     letterBuf.textFont("'Bai Jamjuree Local'"); 
     letterBuf.textStyle(NORMAL); 
     
-    // Use dynamic user-selected size
     letterBuf.textSize(textSizeVal);
-    // Add slightly more line height so multi-line text doesn't mash together
     letterBuf.textLeading(textSizeVal * 1.15); 
     letterBuf.fill(255); 
     
-    // Draw text based on slider X and Y multipliers
     letterBuf.text(textSeed, W * textPosX, H * textPosY);
     
     letterBuf.loadPixels();
 
-    // UPDATED: Scan the entire canvas instead of a strict bounding box
-    // This allows the text to be placed safely anywhere on the screen!
     for (let py = 1; py < H - 1; py++) {
       for (let px = 1; px < W - 1; px++) {
         const idx = 4 * (px + py * W);
@@ -686,7 +651,6 @@ function spawnAgents() {
     }
   }
   
-  // Calculate total agents based on length, making sure we don't spawn 0 if empty
   const charCount = Math.max(1, textSeed.replace(/\n/g, '').trim().length);
   const total = AGENTS_PER_LETTER * charCount;
   
